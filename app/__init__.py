@@ -1,0 +1,1 @@
+# Querypedia application package
