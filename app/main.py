@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from html import escape as html_escape
+from urllib.parse import quote
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,7 +12,7 @@ from typing import Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -173,22 +175,71 @@ async def query(payload: Query, request: Request):
             "model": MODEL}
 
 
+SITE = "https://querypedia.dragonzpyder.xyz"
+
+
+def page_shell(title: str, description: str, path: str, *, robots: str = "index,follow", kind: str = "website") -> HTMLResponse:
+    """Send SEO metadata with the initial HTML so link preview bots can read it.
+
+    URL-derived values are escaped before insertion into the HTML template.
+    """
+    template = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    safe_title = html_escape(title, quote=True)
+    safe_description = html_escape(description, quote=True)
+    canonical = html_escape(SITE + path, quote=True)
+    tags = "\n".join((
+        f'  <meta name="description" content="{safe_description}">',
+        f'  <meta name="robots" content="{html_escape(robots, quote=True)}">',
+        f'  <link rel="canonical" href="{canonical}">',
+        f'  <meta property="og:type" content="{html_escape(kind, quote=True)}">',
+        '  <meta property="og:site_name" content="Querypedia">',
+        '  <meta property="og:locale" content="en_US">',
+        f'  <meta property="og:url" content="{canonical}">',
+        f'  <meta property="og:title" content="{safe_title}">',
+        f'  <meta property="og:description" content="{safe_description}">',
+        '  <meta name="twitter:card" content="summary">',
+        f'  <meta name="twitter:title" content="{safe_title}">',
+        f'  <meta name="twitter:description" content="{safe_description}">',
+    ))
+    template = template.replace("<title>Querypedia — Wikipedia, with questions</title>", f"<title>{safe_title}</title>", 1)
+    template = template.replace("<!-- QUERYPEDIA_SEO_META -->", tags, 1)
+    return HTMLResponse(content=template)
+
+
 @app.get("/")
 async def home():
-    return FileResponse(ROOT / "static" / "index.html")
+    return page_shell(
+        "Querypedia — Search and explore Wikipedia",
+        "Search Wikipedia articles, read and follow sources, then ask questions with Querypedia's optional AI layer.",
+        "/",
+    )
 
 
 @app.get("/search")
-async def search_page():
-    return FileResponse(ROOT / "static" / "index.html")
+async def search_page(request: Request):
+    term = (request.query_params.get("q") or "").strip()[:160]
+    title = f"Search results for {term} — Querypedia" if term else "Search Wikipedia — Querypedia"
+    return page_shell(
+        title, "Search Wikipedia's existing index and browse encyclopedia article results on Querypedia.",
+        "/search", robots="noindex,follow",
+    )
 
 
 @app.get("/ask")
 async def question_page():
-    return FileResponse(ROOT / "static" / "index.html")
+    return page_shell(
+        "Ask Wikipedia — Querypedia",
+        "Ask a question and explore source-backed explanations from Wikipedia using Querypedia's optional AI assistant.",
+        "/ask",
+    )
 
 
 @app.get("/wiki/{title:path}")
 async def reader(title: str):
-    wiki.normalized_title(title)
-    return FileResponse(ROOT / "static" / "index.html")
+    clean_title = wiki.normalized_title(title)
+    article_slug = quote(clean_title.replace(" ", "_"), safe="/():")
+    return page_shell(
+        f"{clean_title} — Querypedia",
+        f"Read the Wikipedia article about {clean_title}, explore its references, and ask article-specific questions on Querypedia.",
+        "/wiki/" + article_slug, kind="article",
+    )
