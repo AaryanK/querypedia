@@ -74,6 +74,7 @@ def test_health_and_index(client):
     assert client.get("/healthz").json()["status"] == "ready"
     assert client.get("/").status_code == 200
     assert "The encyclopedia you know." in client.get("/").text
+    assert '<main id="home-view" class="home">' in client.get("/").text
     assert client.get("/search?q=Einstein").status_code == 200
     assert client.get("/ask").status_code == 200
     assert client.get("/wiki/Albert_Einstein").status_code == 200
@@ -152,7 +153,7 @@ def test_article_replaces_home_and_shows_meta_tags(client):
     assert article.status_code == 200
     html = article.text
     assert '<main id="home-view" class="home hidden">' in html
-    assert '<main id="article-view" class="article-layout hidden">' in html
+    assert '<main id="article-view" class="article-layout">' in html
     assert '<title>Lionel Messi — Querypedia</title>' in html
     assert '<link rel="canonical" href="https://querypedia.dragonzpyder.xyz/wiki/Lionel_Messi">' in html
     assert '<meta property="og:type" content="article">' in html
