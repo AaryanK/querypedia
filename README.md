@@ -26,11 +26,11 @@ Search and article browsing do not require the DragonZpyder model gateway.
 
 ## Local development
 
-Use Python 3.12 or newer. Set up a virtual environment, install the dependencies from requirements.txt, and start the FastAPI application with uvicorn app.main:app --reload. Reading and searching work without AI credentials. AI answers require the server-side DragonZpyder gateway token, configured as described in .env.example.
+Use Python 3.12 or newer. Set up a virtual environment, install the dependencies from requirements.txt, and start the FastAPI application with uvicorn app.main:app --reload. Reading and searching work without AI credentials. AI answers require a dedicated Querypedia app token from the central DragonZpyder inference gateway, configured as described in .env.example. The gateway owns the OpenRouter credential, accounts for model usage and returns request/trace IDs with each answer.
 
 ## Railway
 
-The Querypedia service deploys AaryanK/querypedia from main with root directory /, with Dockerfile and /healthz as the healthcheck. Attach querypedia.dragonzpyder.xyz to the service. The AI gateway is connected with the server-only DRAGONZPYDER_RUNTIME_TOKEN and DRAGONZPYDER_API_URL. Do not place the token in JavaScript.
+The Querypedia service deploys AaryanK/querypedia from main with root directory /, with Dockerfile and /healthz as the healthcheck. Attach querypedia.dragonzpyder.xyz to the service. The AI gateway is connected with the server-only DRAGONZPYDER_QUERYPEDIA_TOKEN and DRAGONZPYDER_API_URL. The new token must match the querypedia entry in the API gateway's DRAGONZPYDER_APP_KEYS_JSON. DRAGONZPYDER_RUNTIME_TOKEN is a temporary fallback for rolling deployments. Answers return inference_trace (trace_id, request_id, audit) so failures can be correlated with gateway records. Do not place the token in JavaScript.
 
 ## Source handling
 
