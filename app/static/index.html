@@ -3,80 +3,92 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Ask Wikipedia anything and follow the sources. Querypedia, powered by DragonZpyder.">
-  <title>Querypedia — Ask Wikipedia</title>
+  <meta name="description" content="Search and read Wikipedia articles, then ask questions about what you discover. Querypedia by DragonZpyder.">
+  <title>Querypedia — Wikipedia, with questions</title>
   <link rel="stylesheet" href="/assets/style.css">
   <script src="/assets/app.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="wordmark" href="/" aria-label="Querypedia home"><span class="logo">Q<span>✦</span></span><span>Querypedia<small>by DragonZpyder</small></span></a>
-    <div class="top-links"><a href="/" id="new-query">Ask Wikipedia</a><a href="https://dragonzpyder.xyz" target="_blank" rel="noopener noreferrer">DragonZpyder ↗</a></div>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Querypedia home"><span class="logo">Q<span>✦</span></span><span>Querypedia<small>BY DRAGONZPYDER</small></span></a>
+    <form id="header-search" role="search" class="header-search" action="/search" method="get">
+      <label class="sr-only" for="header-query">Search Wikipedia</label>
+      <input id="header-query" type="search" name="q" placeholder="Search Wikipedia" maxlength="160" required autocomplete="off">
+      <button type="submit">Search</button>
+    </form>
+    <nav class="site-nav" aria-label="Main navigation"><a href="/">Explore</a><a href="/ask">Ask AI <span aria-hidden="true">✦</span></a></nav>
   </header>
-  <main id="home" class="home">
-    <section class="hero">
-      <div class="eyebrow"><span class="live"></span> THE WORLD'S KNOWLEDGE, A QUESTION AWAY</div>
-      <h1>Don't just read.<br><em>Ask to understand.</em></h1>
-      <p>Explore Wikipedia through natural questions, grounded answers, and direct links to the original articles. Every curiosity can become a conversation.</p>
-      <form id="home-form" class="question-form home-form">
-        <label for="home-question" class="sr-only">What would you like to know?</label>
-        <textarea id="home-question" rows="2" maxlength="500" minlength="3" placeholder="Ask anything you want to understand…" required></textarea>
-        <div class="form-bottom"><span>Powered by Wikipedia knowledge</span><button type="submit">Ask Querypedia <span aria-hidden="true">↗</span></button></div>
+
+  <main id="home-view" class="home">
+    <section class="home-intro">
+      <span class="eyebrow">WIKIPEDIA, WITH AN INTERROGATIVE LAYER</span>
+      <h1>The encyclopedia you know.<br><em>Now you can ask it questions.</em></h1>
+      <p>Search the same Wikipedia knowledge, read the articles, follow links and references, and ask questions whenever you want to understand something further.</p>
+      <form id="home-search" role="search" class="home-search" action="/search" method="get">
+        <label for="home-query" class="sr-only">Search Wikipedia</label>
+        <input id="home-query" name="q" type="search" placeholder="Search Wikipedia articles…" maxlength="160" required>
+        <button type="submit">Search <span aria-hidden="true">→</span></button>
       </form>
-      <div class="suggestions" aria-label="Example questions"><span>Try asking</span>
-        <button data-question="Why does the Moon always show the same face to Earth?">Why does the Moon show the same face? <span>↗</span></button>
-        <button data-question="What caused the fall of the Roman Empire?">What caused Rome's fall? <span>↗</span></button>
-        <button data-question="How did quantum mechanics develop?">How did quantum mechanics develop? <span>↗</span></button>
+      <p class="search-caption">Search first. Read freely. Ask when you're curious.</p>
+      <div class="explore-links">
+        <span>Explore an article:</span>
+        <a href="/wiki/Artificial_intelligence">Artificial intelligence</a>
+        <a href="/wiki/Quantum_mechanics">Quantum mechanics</a>
+        <a href="/wiki/Nepal">Nepal</a>
+        <a href="/wiki/Albert_Einstein">Albert Einstein</a>
       </div>
     </section>
-    <section class="feature-row">
-      <div><span>01 / Discover</span><h3>Ask naturally</h3><p>Use your own words instead of guessing an article title.</p></div>
-      <div><span>02 / Understand</span><h3>Follow the explanation</h3><p>Question first. Relevant knowledge brought together into an answer.</p></div>
-      <div><span>03 / Verify</span><h3>Open the sources</h3><p>Read the original Wikipedia articles behind what you're told.</p></div>
-    </section>
+    <div class="home-explainer"><div><strong>01 · Search</strong><p>Wikipedia's existing index and ranked search results.</p></div><div><strong>02 · Read</strong><p>Full articles, internal links, sections and source attribution.</p></div><div><strong>03 · Ask</strong><p>Optional questions about the article you're already reading.</p></div></div>
   </main>
-  <main id="workspace" class="workspace hidden">
-    <section class="conversation-panel">
-      <div class="thread-header"><span class="eyebrow">QUERYPEDIA ANSWERS</span><button id="reset-chat" type="button">New question ↗</button></div>
-      <div id="chat" class="chat" aria-live="polite" aria-relevant="additions"></div>
-      <form id="followup-form" class="question-form followup-form">
-        <label class="sr-only" for="followup-question">Ask a follow-up question</label>
-        <textarea id="followup-question" rows="2" maxlength="500" minlength="3" placeholder="Ask another question…" required></textarea>
-        <div class="form-bottom"><span id="scope-label">Searching Wikipedia</span><button id="followup-submit" type="submit">Ask ↗</button></div>
-      </form>
+
+  <main id="search-view" class="search-layout hidden">
+    <section class="search-main">
+      <div class="eyebrow">SEARCHING WIKIPEDIA</div>
+      <h1>Search results</h1>
+      <p id="search-summary" class="search-summary" role="status"></p>
+      <div id="search-list" class="search-list" aria-live="polite"></div>
+      <div class="pagination"><button type="button" id="prev-page" class="hidden">← Previous</button><button type="button" id="next-page" class="hidden">Next →</button></div>
     </section>
-    <aside class="sources-panel">
-      <div class="eyebrow">WIKIPEDIA SOURCES</div>
-      <h2>Go deeper.</h2>
-      <p>Answers are backed by relevant excerpts. Open any article to read it and ask more.</p>
-      <div id="sources"><div class="sources-empty">Sources for your answer will appear here.</div></div>
-      <form id="lookup-form" class="lookup-form">
-        <label for="lookup" class="eyebrow">OR FIND AN ARTICLE</label>
-        <div class="lookup-controls"><input id="lookup" maxlength="120" placeholder="Search article title…" required><button type="submit">↗</button></div>
-      </form>
-      <div id="lookup-results"></div>
-    </aside>
+    <aside class="search-aside"><div class="aside-panel"><span class="eyebrow">ASK ON TOP OF WIKIPEDIA</span><h2>Curious about these results?</h2><p>Search results are unchanged by AI. If you prefer an explanation, you can choose to ask about this topic.</p><a id="ask-results" class="ask-link" href="/ask">Ask about this topic ✦</a></div></aside>
   </main>
-  <main id="article" class="article-layout hidden">
-    <aside class="toc-panel"><span class="eyebrow">CONTENTS</span><nav id="toc"></nav></aside>
-    <section class="article-content">
-      <div class="breadcrumb"><a href="/">Querypedia</a><span>›</span><span id="crumb">Article</span></div>
-      <div id="page-state" class="page-state">Loading Wikipedia article…</div>
+
+  <main id="article-view" class="article-layout hidden">
+    <aside class="toc-rail"><span class="eyebrow">ON THIS PAGE</span><nav id="toc" aria-label="Article contents"></nav></aside>
+    <article class="reader">
+      <div class="breadcrumbs"><a href="/">Querypedia</a><span>›</span><span id="crumb">Article</span></div>
+      <div id="page-state" class="page-state">Loading article from Wikipedia…</div>
       <div id="page-ready" class="hidden">
-        <span class="eyebrow">SOURCE ARTICLE · WIKIPEDIA</span>
+        <span class="eyebrow">FROM WIKIPEDIA · FREE ENCYCLOPEDIA</span>
         <h1 id="article-title"></h1>
-        <div class="article-details"><span id="updated"></span><a id="original" target="_blank" rel="noopener noreferrer">Original Wikipedia article ↗</a></div>
+        <div class="article-meta"><span id="updated"></span><a id="original" rel="noopener noreferrer" target="_blank">Read original on Wikipedia ↗</a></div>
         <div id="article-html" class="wiki-content"></div>
         <footer id="attribution" class="attribution"></footer>
       </div>
-    </section>
-    <aside class="article-ask">
-      <div class="assistant-intro"><div class="star">✦</div><div><strong>Ask this article</strong><small>Stay curious, go deeper</small></div></div>
+    </article>
+    <aside class="ask-sidebar">
+      <div class="assistant-top"><span class="assistant-symbol">✦</span><div><strong>Ask this article</strong><small>An optional layer on Wikipedia</small></div></div>
+      <p class="assistant-description">Have a question about something you're reading? Ask it here. Your article stays open.</p>
       <div id="article-chat" class="article-chat" aria-live="polite"></div>
-      <form id="article-form" class="question-form article-form"><label class="sr-only" for="article-question">Ask about this article</label><textarea id="article-question" rows="3" maxlength="500" minlength="3" placeholder="What would you like to know about this article?" required></textarea><div class="form-bottom"><span>Grounded in this page</span><button type="submit">Ask ↗</button></div></form>
-      <p class="fine-print">AI can make mistakes. Follow source links to verify important details.</p>
+      <form id="article-form" class="ask-form">
+        <label class="sr-only" for="article-question">Ask about this article</label>
+        <textarea id="article-question" rows="3" minlength="3" maxlength="500" placeholder="Ask a question about this article…" required></textarea>
+        <div class="form-bottom"><span>Using this article as the source</span><button type="submit">Ask ✦</button></div>
+      </form>
+      <small class="disclaimer">AI-generated answers may contain mistakes. Check the linked Wikipedia source.</small>
     </aside>
   </main>
-  <footer class="site-footer">Querypedia is independently developed by DragonZpyder and is not affiliated with the Wikimedia Foundation. Wikipedia text remains under its applicable licence.</footer>
+
+  <main id="ask-view" class="ask-layout hidden">
+    <div class="ask-header"><span class="eyebrow">OPTIONAL AI EXPLORATION</span><h1>Ask Wikipedia a question.</h1><p>Querypedia looks for relevant Wikipedia articles and explains what they say. This mode is separate from normal encyclopedia search.</p></div>
+    <div id="chat" class="chat" aria-live="polite"></div>
+    <form id="ask-form" class="ask-form wide-ask-form">
+      <label class="sr-only" for="ask-question">Ask your question</label>
+      <textarea id="ask-question" rows="3" minlength="3" maxlength="500" placeholder="What would you like to understand?" required></textarea>
+      <div class="form-bottom"><span>Answers include source links</span><button type="submit">Ask Querypedia ✦</button></div>
+    </form>
+    <section class="ask-sources"><h2>Sources</h2><div id="sources"><p>Sources appear here after you ask.</p></div></section>
+  </main>
+
+  <footer class="footer">Querypedia by DragonZpyder is an independent Wikipedia-based reader, not affiliated with the Wikimedia Foundation. Wikipedia content is licensed by its respective contributors; media may have separate licences.</footer>
 </body>
 </html>
