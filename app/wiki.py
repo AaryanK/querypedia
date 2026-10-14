@@ -153,22 +153,55 @@ async def article(client: httpx.AsyncClient, title: str) -> dict:
     return record
 
 
-async def search(client: httpx.AsyncClient, query: str, limit: int = 7) -> list[dict]:
+async def search_results(client: httpx.AsyncClient, query: str, limit: int = 20, offset: int = 0) -> dict:
+    """Return Wikipedia's own ranked encyclopedia search results, not LLM answers.
+
+    Search is deliberately literal: we do not remove question words, rewrite the
+    user's query, or mix generated answers into normal Wikipedia search.
+    """
     query = query.strip()
-    if len(query) < 2 or len(query) > 160:
-        raise HTTPException(400, "Search query must contain 2–160 characters")
+    if not 1 <= len(query) <= 160:
+        raise HTTPException(400, "Search query must contain 1–160 characters")
+    if not 0 <= offset <= 5000:
+        raise HTTPException(400, "Invalid search offset")
+    limit = max(1, min(limit, 20))
     try:
-        response = await client.get(API + "/search/page", params={"q": query, "limit": min(max(limit, 1), 12)})
+        response = await client.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query", "list": "search", "srsearch": query,
+                "srnamespace": "0", "srlimit": limit, "sroffset": offset,
+                "srprop": "snippet|wordcount|timestamp",
+                "format": "json", "formatversion": "2",
+            },
+        )
     except httpx.HTTPError:
         raise HTTPException(502, "Wikipedia search is unavailable")
     if response.status_code != 200:
         raise HTTPException(502, "Wikipedia search is unavailable")
     try:
-        return [{"key": x["key"], "title": x.get("title") or x["key"],
-                 "description": x.get("description") or ""}
-                for x in response.json().get("pages", []) if x.get("key")]
-    except (ValueError, TypeError):
+        payload = response.json()
+        if "error" in payload:
+            raise ValueError("upstream search error")
+        results = payload["query"]["search"]
+        total = int(payload["query"].get("searchinfo", {}).get("totalhits", len(results)))
+        pages = [
+            {"key": item["title"].replace(" ", "_"), "title": item["title"],
+             "description": BeautifulSoup(item.get("snippet") or "", "html.parser").get_text(" ", strip=True),
+             "wordcount": item.get("wordcount"), "timestamp": item.get("timestamp")}
+            for item in results if isinstance(item.get("title"), str)
+        ]
+        next_offset = payload.get("continue", {}).get("sroffset")
+    except (ValueError, TypeError, KeyError, AttributeError):
         raise HTTPException(502, "Unexpected response from Wikipedia search")
+    return {"pages": pages, "total": total, "offset": offset,
+            "next_offset": int(next_offset) if next_offset is not None else None,
+            "query": query}
+
+
+async def search(client: httpx.AsyncClient, query: str, limit: int = 7) -> list[dict]:
+    """Backwards-compatible title discovery for explicit AI question requests."""
+    return (await search_results(client, query, limit=limit))["pages"]
 
 
 async def find_sources(client: httpx.AsyncClient, question: str) -> list[dict]:
