@@ -145,3 +145,41 @@ def test_search_uses_wikipedia_ranking_and_query(client):
     assert result.status_code == 200
     assert any("srsearch=Aryan+Khan" in url or "srsearch=Aryan%20Khan" in url for url in seen)
     assert not any("/v1/chat/completions" in url for url in seen)
+
+
+def test_article_replaces_home_and_shows_meta_tags(client):
+    article = client.get("/wiki/Lionel_Messi")
+    assert article.status_code == 200
+    html = article.text
+    assert '<main id="home-view" class="home hidden">' in html
+    assert '<main id="article-view" class="article-layout hidden">' in html
+    assert '<title>Lionel Messi — Querypedia</title>' in html
+    assert '<link rel="canonical" href="https://querypedia.dragonzpyder.xyz/wiki/Lionel_Messi">' in html
+    assert '<meta property="og:type" content="article">' in html
+    assert '<meta name="twitter:card" content="summary">' in html
+    assert '<meta name="description"' in html
+    assert '<link rel="icon" href="/assets/favicon.svg"' in html
+
+
+def test_search_meta_and_escaped_user_input(client):
+    result = client.get("/search", params={"q": 'Lionel Messi"><script>alert(1)</script>'})
+    assert result.status_code == 200
+    assert "noindex,follow" in result.text
+    assert "&quot;&gt;&lt;script&gt;" in result.text
+    assert '<script>alert(1)</script>' not in result.text
+    assert 'og:description' in result.text
+    assert '<link rel="canonical" href="https://querypedia.dragonzpyder.xyz/search">' in result.text
+
+
+def test_mobile_ask_drawer_and_top_of_article_are_available(client):
+    html = client.get("/wiki/Lionel_Messi").text
+    assert 'id="mobile-ask-trigger"' in html
+    assert 'id="mobile-ask-backdrop"' in html
+    assert 'id="mobile-ask-close"' in html
+    script = client.get("/assets/app.js").text
+    assert 'for (const id of ["home-view", "search-view", "article-view", "ask-view"])' in script
+    assert 'window.scrollTo({top: 0, behavior: "auto"})' in script
+    assert "setMobileQuestionPanel" in script
+    assert 'id="article-html"' in html
+    styles = client.get("/assets/style.css").text
+    assert "max-width:760px" in styles and "ask-sidebar.mobile-open" in styles
