@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="application-name" content="Querypedia">
+  <meta name="color-scheme" content="light">
+  <!-- QUERYPEDIA_SEO_META -->
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <meta name="description" content="Search and read Wikipedia articles, then ask questions about what you discover. Querypedia by DragonZpyder.">
   <title>Querypedia — Wikipedia, with questions</title>
   <link rel="stylesheet" href="/assets/style.css">
@@ -53,6 +58,8 @@
   </main>
 
   <main id="article-view" class="article-layout hidden">
+    <button id="mobile-ask-trigger" class="mobile-ask-trigger" type="button" aria-controls="ask-sidebar" aria-expanded="false">✦ Ask this article</button>
+    <div id="mobile-ask-backdrop" class="mobile-ask-backdrop" hidden></div>
     <aside class="toc-rail"><span class="eyebrow">ON THIS PAGE</span><nav id="toc" aria-label="Article contents"></nav></aside>
     <article class="reader">
       <div class="breadcrumbs"><a href="/">Querypedia</a><span>›</span><span id="crumb">Article</span></div>
@@ -65,8 +72,8 @@
         <footer id="attribution" class="attribution"></footer>
       </div>
     </article>
-    <aside class="ask-sidebar">
-      <div class="assistant-top"><span class="assistant-symbol">✦</span><div><strong>Ask this article</strong><small>An optional layer on Wikipedia</small></div></div>
+    <aside id="ask-sidebar" class="ask-sidebar" aria-label="Ask questions about this article">
+      <div class="assistant-top"><span class="assistant-symbol">✦</span><div><strong>Ask this article</strong><small>An optional layer on Wikipedia</small></div><button id="mobile-ask-close" class="mobile-ask-close" type="button" aria-label="Close questions panel">×</button></div>
       <p class="assistant-description">Have a question about something you're reading? Ask it here. Your article stays open.</p>
       <div id="article-chat" class="article-chat" aria-live="polite"></div>
       <form id="article-form" class="ask-form">
