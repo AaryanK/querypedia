@@ -112,6 +112,15 @@ async function showArticle(slug) {
     put(footer, "p", "Images and other media may have separate licences.");
     $("page-state").classList.add("hidden");
     $("page-ready").classList.remove("hidden");
+    // The article is the new page, not content appended below the homepage.
+    // Anchor links should still jump to their Wikipedia section once it exists.
+    requestAnimationFrame(() => {
+      let fragment = "";
+      try { fragment = decodeURIComponent(location.hash.slice(1)); } catch (_) {}
+      const destination = fragment && document.getElementById(fragment);
+      if (destination) destination.scrollIntoView({block: "start"});
+      else window.scrollTo({top: 0, behavior: "auto"});
+    });
   } catch (error) {
     $("page-state").textContent = error.message + " Try searching for the article instead.";
   }
@@ -238,6 +247,53 @@ for (const field of document.querySelectorAll("textarea")) {
     }
   });
 }
+// Render exactly one page at a time: previously the visible homepage stayed above
+// the article, leaving people scrolled to the hero after opening a search hit.
+for (const id of ["home-view", "search-view", "article-view", "ask-view"]) {
+  $(id).classList.add("hidden");
+}
+
+function setMobileQuestionPanel(open, restoreFocus = true) {
+  const sidebar = $("ask-sidebar");
+  const backdrop = $("mobile-ask-backdrop");
+  const trigger = $("mobile-ask-trigger");
+  sidebar.classList.toggle("mobile-open", open);
+  document.body.classList.toggle("mobile-ask-open", open);
+  backdrop.hidden = !open;
+  trigger.setAttribute("aria-expanded", String(open));
+  if (open) {
+    sidebar.setAttribute("role", "dialog");
+    sidebar.setAttribute("aria-modal", "true");
+    $("article-question").focus();
+  } else {
+    sidebar.removeAttribute("role");
+    sidebar.removeAttribute("aria-modal");
+    if (restoreFocus && articleSlug) trigger.focus();
+  }
+}
+$("mobile-ask-trigger").addEventListener("click", () => setMobileQuestionPanel(true));
+$("mobile-ask-close").addEventListener("click", () => setMobileQuestionPanel(false));
+$("mobile-ask-backdrop").addEventListener("click", () => setMobileQuestionPanel(false));
+document.addEventListener("keydown", (event) => {
+  if (!$("ask-sidebar").classList.contains("mobile-open")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    setMobileQuestionPanel(false);
+  } else if (event.key === "Tab") {
+    const focusable = [...$("ask-sidebar").querySelectorAll("button:not([disabled]), textarea:not([disabled]), a[href]")];
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault(); first.focus();
+    }
+  }
+});
+window.matchMedia("(min-width: 1151px)").addEventListener("change", (event) => {
+  if (event.matches && $("ask-sidebar").classList.contains("mobile-open")) setMobileQuestionPanel(false, false);
+});
+
 if (articleSlug) {
   $("article-view").classList.remove("hidden");
   showArticle(articleSlug);
