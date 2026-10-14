@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Querypedia">
+  <rect width="64" height="64" rx="13" fill="#fff"/>
+  <path d="M44.7 49.2A24 24 0 1 1 49 16.7" fill="none" stroke="#315b99" stroke-width="8" stroke-linecap="round"/>
+  <path d="m39.5 43.1 11.2 13.1" stroke="#315b99" stroke-width="7" stroke-linecap="round"/>
+  <path d="m47 5 2.5 6.5L56 14l-6.5 2.5L47 23l-2.5-6.5L38 14l6.5-2.5z" fill="#7da4d9"/>
+</svg>
