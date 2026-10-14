@@ -203,6 +203,20 @@ def page_shell(title: str, description: str, path: str, *, robots: str = "index,
     ))
     template = template.replace("<title>Querypedia — Wikipedia, with questions</title>", f"<title>{safe_title}</title>", 1)
     template = template.replace("<!-- QUERYPEDIA_SEO_META -->", tags, 1)
+    # The correct view must be visible immediately on the server response, not
+    # appended below the homepage or flashed after JavaScript initialises.
+    route_views = {
+        "/": ('<main id="home-view" class="home hidden">', '<main id="home-view" class="home">'),
+        "/search": ('<main id="search-view" class="search-layout hidden">', '<main id="search-view" class="search-layout">'),
+        "/ask": ('<main id="ask-view" class="ask-layout hidden">', '<main id="ask-view" class="ask-layout">'),
+    }
+    route = "/wiki" if path.startswith("/wiki/") else path
+    if route == "/wiki":
+        visible = ('<main id="article-view" class="article-layout hidden">', '<main id="article-view" class="article-layout">')
+    else:
+        visible = route_views.get(route)
+    if visible:
+        template = template.replace(visible[0], visible[1], 1)
     return HTMLResponse(content=template)
 
 
