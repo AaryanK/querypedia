@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import os
+import secrets
 import time
 from html import escape as html_escape
 from urllib.parse import quote
@@ -9,6 +10,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -21,7 +23,7 @@ from . import wiki
 ROOT = Path(__file__).parent
 DRAGONZPYDER_URL = os.getenv("DRAGONZPYDER_API_URL", "http://dragonzpyder-api.railway.internal:8080").rstrip("/")
 MODEL = os.getenv("QUERYPEDIA_MODEL", "openai/gpt-oss-120b")
-AGENT_TOKEN = os.getenv("DRAGONZPYDER_RUNTIME_TOKEN", "")
+AGENT_TOKEN = os.getenv("DRAGONZPYDER_QUERYPEDIA_TOKEN") or os.getenv("DRAGONZPYDER_RUNTIME_TOKEN", "")
 USER_AGENT = os.getenv("WIKIMEDIA_USER_AGENT", "Querypedia/0.2 (https://querypedia.dragonzpyder.xyz; https://dragonzpyder.xyz)")
 RATE_LOCK = asyncio.Lock()
 RATE: dict[str, list[float]] = defaultdict(list)
@@ -100,7 +102,7 @@ def context_from_articles(articles: list[dict], question: str) -> tuple[str, lis
     return "\n\n".join(sections), sources
 
 
-async def generate_answer(client: httpx.AsyncClient, payload: Query, context: str, sources: list[dict]) -> str:
+async def generate_answer(client: httpx.AsyncClient, payload: Query, context: str, sources: list[dict]) -> tuple[str, dict]:
     if len(AGENT_TOKEN) < 32:
         raise HTTPException(503, "AI answers are not enabled yet. Wikipedia reading and search are available.")
     if not sources or not context:
@@ -119,11 +121,12 @@ async def generate_answer(client: httpx.AsyncClient, payload: Query, context: st
          "reasoning. You may suggest what to investigate further."},
         *previous, {"role": "user", "content": user_message}],
         "temperature": 0.1, "max_tokens": 1100}
+    traceparent = "00-" + uuid4().hex + "-" + secrets.token_hex(8) + "-01"
     try:
         async with INFERENCE_GATE:
             result = await client.post(
                 DRAGONZPYDER_URL + "/v1/chat/completions",
-                headers={"Authorization": "Bearer " + AGENT_TOKEN},
+                headers={"Authorization": "Bearer " + AGENT_TOKEN, "traceparent": traceparent},
                 json=body, timeout=75.0)
     except httpx.HTTPError:
         raise HTTPException(502, "DragonZpyder AI is unavailable right now")
@@ -137,7 +140,11 @@ async def generate_answer(client: httpx.AsyncClient, payload: Query, context: st
             raise ValueError("invalid response")
     except (ValueError, KeyError, IndexError, TypeError):
         raise HTTPException(502, "AI returned an invalid response")
-    return value[:12000]
+    return value[:12000], {
+        "trace_id": result.headers.get("x-dragonzpyder-trace-id") or traceparent.split("-")[1],
+        "request_id": result.headers.get("x-dragonzpyder-request-id"),
+        "audit": result.headers.get("x-dragonzpyder-audit", "unavailable"),
+    }
 
 
 @app.get("/healthz")
@@ -169,8 +176,8 @@ async def query(payload: Query, request: Request):
     else:
         articles = await wiki.find_sources(request.app.state.http, retrieval_question)
     context, sources = context_from_articles(articles, retrieval_question)
-    answer = await generate_answer(request.app.state.http, payload, context, sources)
-    return {"answer": answer, "sources": sources,
+    answer, trace = await generate_answer(request.app.state.http, payload, context, sources)
+    return {"answer": answer, "sources": sources, "inference_trace": trace,
             "scope": "article" if payload.article else "wikipedia",
             "model": MODEL}
 
