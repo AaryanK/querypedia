@@ -1,6 +1,6 @@
 import os
 
-os.environ["DRAGONZPYDER_RUNTIME_TOKEN"] = "x" * 40
+os.environ["DRAGONZPYDER_RUNTIME_TOKEN"] = "x" * 40\nos.environ["DRAGONZPYDER_QUERYPEDIA_TOKEN"] = "q" * 48
 os.environ["DRAGONZPYDER_API_URL"] = "https://dragonzpyder-test.invalid"
 
 import httpx
@@ -37,8 +37,8 @@ def handler(request: httpx.Request) -> httpx.Response:
                                          "license": {"url": "//creativecommons.org/licenses/by-sa/4.0/", "title": "CC BY-SA"},
                                          "html": HTML})
     if path.endswith("/v1/chat/completions"):
-        assert request.headers["authorization"] == "Bearer " + "x" * 40
-        return httpx.Response(200, json={"choices": [{"message": {"content": "Einstein developed relativity [1]."}}]})
+        assert request.headers["authorization"] == "Bearer " + "q" * 48\n        assert request.headers.get("traceparent", "").startswith("00-")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "Einstein developed relativity [1]."}}]},\n                              headers={"x-dragonzpyder-trace-id": "a" * 32,\n                                       "x-dragonzpyder-request-id": "unit-request",\n                                       "x-dragonzpyder-audit": "persisted"})
     return httpx.Response(404)
 
 
@@ -104,7 +104,7 @@ def test_search_and_wikipedia_grounded_query(client):
     data = response.json()
     assert "relativity [1]" in data["answer"]
     assert data["sources"][0]["title"] == "Albert Einstein"
-    assert data["scope"] == "wikipedia"
+    assert data["scope"] == "wikipedia"\n    assert data["inference_trace"] == {"trace_id": "a" * 32, "request_id": "unit-request", "audit": "persisted"}
 
 
 def test_article_scoped_query(client):
