@@ -1,194 +1,254 @@
 "use strict";
-const byId = (id) => document.getElementById(id);
-const articleSlug = location.pathname.startsWith("/wiki/") ? location.pathname.substring(6) : null;
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const articleSlug = location.pathname.startsWith("/wiki/") ? location.pathname.slice(6) : null;
 let currentArticle = null;
-let history = [];
-let articleHistory = [];
-
-function textNode(parent, tag, value, className) {
-  const el = document.createElement(tag);
-  el.textContent = value;
-  if (className) el.className = className;
-  parent.appendChild(el);
-  return el;
+const conversations = {article: [], global: []};
+function put(parent, tag, text = "", className = "") {
+  const element = document.createElement(tag);
+  element.textContent = text;
+  if (className) element.className = className;
+  parent.appendChild(element);
+  return element;
 }
-async function jsonResponse(res) {
+function wikiLink(title) {
+  return "/wiki/" + title.split("/").map(encodeURIComponent).join("/");
+}
+function searchLink(q, offset = 0, go = false) {
+  return "/search?q=" + encodeURIComponent(q) + (offset ? "&offset=" + offset : "") + (go ? "&go=1" : "");
+}
+async function requestJson(response) {
   let data = {};
-  try { data = await res.json(); } catch (_) { /* HTTP failures can have empty bodies */ }
-  if (!res.ok) throw new Error(data.detail || "That request couldn't be completed.");
+  try { data = await response.json(); } catch (_) {}
+  if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Request failed. Please try again.");
   return data;
 }
-function wikiLink(key) {
-  return "/wiki/" + key.split("/").map(encodeURIComponent).join("/");
+async function showSearch(q, offset, go) {
+  const list = $("search-list");
+  list.replaceChildren();
+  $("search-summary").textContent = "Searching Wikipedia for “" + q + "”…";
+  $("header-query").value = q;
+  $("ask-results").href = "/ask?question=" + encodeURIComponent(q.length < 3 ? "Tell me about " + q : q);
+  $("prev-page").classList.add("hidden");
+  $("next-page").classList.add("hidden");
+  try {
+    const data = await requestJson(await fetch("/api/search?q=" + encodeURIComponent(q) + "&offset=" + offset));
+    const exact = data.pages[0] && data.pages[0].title.replaceAll("_"," ").toLowerCase() === q.replaceAll("_"," ").trim().toLowerCase();
+    if (go && !offset && exact) {
+      location.replace(wikiLink(data.pages[0].key));
+      return;
+    }
+    document.title = "Search: " + q + " — Querypedia";
+    $("search-summary").textContent = data.pages.length ?
+      "Showing " + (offset + 1) + "–" + (offset + data.pages.length) + " of " + data.total.toLocaleString() + " Wikipedia results for “" + q + "”." :
+      "No results found for “" + q + "”.";
+    for (const page of data.pages) {
+      const entry = put(list, "article", "", "search-result");
+      const link = put(put(entry, "h2"), "a", page.title);
+      link.href = wikiLink(page.key);
+      if (page.description) put(entry, "p", page.description, "result-description");
+      const meta = put(entry, "div", "", "result-meta");
+      put(meta, "span", "Wikipedia article");
+      if (typeof page.wordcount === "number") put(meta, "span", page.wordcount.toLocaleString() + " words");
+      put(entry, "a", "Read article →", "read-link").href = wikiLink(page.key);
+    }
+    if (!data.pages.length) put(list, "p", "Try a different spelling or a broader search.", "search-empty");
+    if (offset) {
+      $("prev-page").classList.remove("hidden");
+      $("prev-page").onclick = () => location.assign(searchLink(q, Math.max(0, offset - 20)));
+    }
+    if (data.next_offset !== null && data.next_offset !== undefined) {
+      $("next-page").classList.remove("hidden");
+      $("next-page").onclick = () => location.assign(searchLink(q, data.next_offset));
+    }
+  } catch (error) {
+    $("search-summary").textContent = "Wikipedia search is currently unavailable.";
+    put(list, "p", error.message, "error");
+  }
 }
-function addAnswer(parent, answer, sources, className = "message response") {
-  const node = document.createElement("div");
-  node.className = className;
-  const pieces = answer.split(/\[(\d+)\]/g);
-  for (let i = 0; i < pieces.length; i++) {
-    if (i % 2 === 0) node.append(document.createTextNode(pieces[i]));
-    else {
-      const source = sources.find((s) => String(s.id) === pieces[i]);
-      if (!source) node.append(document.createTextNode("[" + pieces[i] + "]"));
-      else {
-        const link = textNode(node, "a", "[" + pieces[i] + "]", "cite-link");
-        link.href = wikiLink(source.key);
-        link.title = "Read " + source.title;
+function makeToc(root) {
+  const toc = $("toc");
+  toc.replaceChildren();
+  let number = 0;
+  for (const heading of root.querySelectorAll("h2,h3")) {
+    const title = heading.textContent.trim();
+    if (!title || title.toLowerCase() === "contents") continue;
+    if (!heading.id) heading.id = "section-" + (++number);
+    const link = put(toc, "a", title.slice(0,75));
+    link.href = "#" + encodeURIComponent(heading.id);
+    if (heading.tagName === "H3") link.className = "subheading";
+    if (toc.children.length >= 70) break;
+  }
+}
+async function showArticle(slug) {
+  const title = decodeURIComponent(slug).replaceAll("_"," ");
+  $("crumb").textContent = title;
+  try {
+    const page = await requestJson(await fetch("/api/page/" + slug));
+    currentArticle = page;
+    $("header-query").value = page.title;
+    $("article-title").textContent = page.title;
+    $("crumb").textContent = page.title;
+    document.title = page.title + " — Querypedia";
+    $("original").href = page.url;
+    $("updated").textContent = page.updated ? "Wikipedia revision · " + new Date(page.updated).toLocaleDateString() : "From Wikipedia";
+    // The API sanitises HTML and rewrites article links to local /wiki routes.
+    $("article-html").innerHTML = page.html;
+    makeToc($("article-html"));
+    const footer = $("attribution");
+    footer.replaceChildren();
+    put(footer, "p", "Source: Wikipedia contributors. Article content is presented in a different interface.");
+    const history = put(footer, "a", "View original article and contributor history ↗");
+    history.href = "https://en.wikipedia.org/w/index.php?title=" + encodeURIComponent(page.key) + "&action=history";
+    history.target = "_blank";
+    history.rel = "noopener noreferrer";
+    if (page.license && typeof page.license.url === "string") {
+      const licence = page.license.url.startsWith("//") ? "https:" + page.license.url : page.license.url;
+      if (licence.startsWith("https://creativecommons.org/")) {
+        const link = put(footer, "a", " · " + (page.license.title || "Content licence") + " ↗");
+        link.href = licence; link.target = "_blank"; link.rel = "noopener noreferrer";
       }
     }
+    put(footer, "p", "Images and other media may have separate licences.");
+    $("page-state").classList.add("hidden");
+    $("page-ready").classList.remove("hidden");
+  } catch (error) {
+    $("page-state").textContent = error.message + " Try searching for the article instead.";
   }
-  parent.appendChild(node);
-  parent.scrollTop = parent.scrollHeight;
-  return node;
+}
+function inline(parent, text, sources) {
+  const tokens = /(\[\d+\]|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g;
+  let index = 0, match;
+  while ((match = tokens.exec(text)) !== null) {
+    if (match.index > index) parent.append(document.createTextNode(text.slice(index, match.index)));
+    const part = match[0];
+    if (/^\[\d+\]$/.test(part)) {
+      const source = sources.find(s => String(s.id) === part.slice(1,-1));
+      if (source) {
+        const link = put(parent,"a",part,"cite");
+        link.href = wikiLink(source.key);
+        link.title = source.title;
+      } else parent.append(document.createTextNode(part));
+    } else if (part.startsWith("**")) put(parent,"strong",part.slice(2,-2));
+    else put(parent,"em",part.slice(1,-1));
+    index = tokens.lastIndex;
+  }
+  if (index < text.length) parent.append(document.createTextNode(text.slice(index)));
+}
+function renderAnswer(parent, answer, sources) {
+  const container = put(parent, "div", "", "answer");
+  const lines = answer.replace(/<br\s*\/?>/gi,"\n").split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    if (!line) { i++; continue; }
+    if (/^\|.+\|$/.test(line) && i+1 < lines.length && /^\|[\s:|\-]+\|$/.test(lines[i+1].trim())) {
+      const table = put(container,"table","","answer-table");
+      const head = put(put(table,"thead"),"tr");
+      for(const cell of line.replace(/^\||\|$/g,"").split("|")) inline(put(head,"th"),cell.trim(),sources);
+      const body = put(table,"tbody"); i += 2;
+      while(i < lines.length && /^\|.+\|$/.test(lines[i].trim())) {
+        const tr = put(body,"tr");
+        for(const cell of lines[i].trim().replace(/^\||\|$/g,"").split("|")) inline(put(tr,"td"),cell.trim(),sources);
+        i++;
+      }
+      continue;
+    }
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      inline(put(container,heading[1].length < 3?"h3":"h4"),heading[2],sources); i++; continue;
+    }
+    const item = line.match(/^([-*]|\d+\.)\s+(.+)$/);
+    if (item) {
+      const ordered = /^\d/.test(item[1]);
+      const list = put(container,ordered?"ol":"ul");
+      while(i < lines.length) {
+        const next = lines[i].trim().match(/^([-*]|\d+\.)\s+(.+)$/);
+        if (!next || /^\d/.test(next[1]) !== ordered) break;
+        inline(put(list,"li"),next[2],sources); i++;
+      }
+      continue;
+    }
+    const paragraph = [];
+    while(i < lines.length && lines[i].trim() && !/^(#{1,4}\s+|[-*]\s+|\d+\.\s+|\|)/.test(lines[i].trim())) {
+      paragraph.push(lines[i].trim()); i++;
+    }
+    if (!paragraph.length) { paragraph.push(line); i++; }
+    inline(put(container,"p"),paragraph.join(" "),sources);
+  }
 }
 function showSources(sources) {
-  const container = byId("sources");
-  container.replaceChildren();
-  if (!sources.length) return textNode(container, "p", "No supporting article was found.");
+  const box = $("sources"); box.replaceChildren();
   for (const source of sources) {
-    const link = document.createElement("a");
-    link.className = "source-card";
+    const link = put(box, "a", "", "source-card");
     link.href = wikiLink(source.key);
-    textNode(link, "span", "SOURCE " + String(source.id).padStart(2, "0") + " / WIKIPEDIA", "number");
-    textNode(link, "strong", source.title);
-    textNode(link, "small", (source.sections || []).slice(0, 2).join(" · ") || "Read the full article");
-    container.appendChild(link);
+    put(link, "span", "WIKIPEDIA · SOURCE " + source.id, "eyebrow");
+    put(link, "strong", source.title);
+    if (source.sections) put(link, "small", source.sections.slice(0,2).join(" · "));
   }
 }
-async function ask(question, scope) {
-  const isArticle = scope === "article";
-  const list = byId(isArticle ? "article-chat" : "chat");
-  const form = byId(isArticle ? "article-form" : "followup-form");
+async function ask(question, mode) {
+  const isArticle = mode === "article";
+  const thread = $(isArticle ? "article-chat" : "chat");
+  const form = $(isArticle ? "article-form" : "ask-form");
   const button = form.querySelector("button[type=submit]");
-  const log = isArticle ? articleHistory : history;
-  if (!isArticle) {
-    byId("home").classList.add("hidden");
-    byId("workspace").classList.remove("hidden");
-    window.scrollTo(0, 0);
-  }
-  textNode(list, "div", question, isArticle ? "article-bubble question" : "message question");
+  const history = conversations[isArticle ? "article" : "global"];
+  put(thread,"div",question,"question-bubble");
+  const pending = put(thread,"div","Consulting Wikipedia…","loading-bubble");
   button.disabled = true;
-  const wait = textNode(list, "div", "Consulting Wikipedia articles…", isArticle ? "article-bubble response" : "message pending");
   try {
-    const data = await jsonResponse(await fetch("/api/query", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({question, article: isArticle && currentArticle ? currentArticle.key : null, history: log.slice(-4)})
+    const data = await requestJson(await fetch("/api/query",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({question,article:isArticle&&currentArticle?currentArticle.key:null,history:history.slice(-4)})
     }));
-    wait.remove();
-    addAnswer(list, data.answer, data.sources, isArticle ? "article-bubble response" : "message response");
+    pending.remove();
+    renderAnswer(thread,data.answer,data.sources);
     if (!isArticle) showSources(data.sources);
-    log.push({role: "user", content: question}, {role: "assistant", content: data.answer.slice(0, 800)});
-    if (log.length > 10) log.splice(0, log.length - 10);
-  } catch (e) {
-    wait.remove();
-    textNode(list, "div", e.message, isArticle ? "article-bubble error" : "message error");
+    history.push({role:"user",content:question},{role:"assistant",content:data.answer.slice(0,800)});
+    if (history.length > 8) history.splice(0,history.length-8);
+  } catch (error) {
+    pending.remove();
+    put(thread,"p",error.message,"error");
   } finally {
     button.disabled = false;
-    list.scrollTop = list.scrollHeight;
+    if (isArticle) thread.scrollTop = thread.scrollHeight;
   }
 }
-function toc(body) {
-  const nav = byId("toc");
-  nav.replaceChildren();
-  let seq = 0;
-  for (const head of body.querySelectorAll("h2, h3")) {
-    const title = head.textContent.trim();
-    if (!title || title.toLowerCase() === "contents") continue;
-    if (!head.id) head.id = "section-" + (++seq);
-    const link = textNode(nav, "a", title.slice(0, 70));
-    link.href = "#" + encodeURIComponent(head.id);
-    if (head.tagName === "H3") link.style.paddingLeft = "20px";
-    if (nav.children.length >= 60) break;
-  }
+for (const id of ["home-search","header-search"]) {
+  $(id).addEventListener("submit", event => {
+    event.preventDefault();
+    const q = $(id === "home-search" ? "home-query" : "header-query").value.trim();
+    if (q) location.assign(searchLink(q,0,true));
+  });
 }
-async function loadArticle() {
-  byId("home").classList.add("hidden");
-  byId("article").classList.remove("hidden");
-  const title = decodeURIComponent(articleSlug).replaceAll("_", " ");
-  byId("crumb").textContent = title;
-  try {
-    const data = await jsonResponse(await fetch("/api/page/" + articleSlug));
-    currentArticle = data;
-    document.title = data.title + " — Querypedia";
-    byId("article-title").textContent = data.title;
-    byId("crumb").textContent = data.title;
-    byId("updated").textContent = data.updated ? "Revision: " + new Date(data.updated).toLocaleDateString() : "From Wikipedia";
-    byId("original").href = data.url;
-    byId("article-html").innerHTML = data.html;
-    toc(byId("article-html"));
-    const footer = byId("attribution");
-    footer.replaceChildren();
-    textNode(footer, "span", "Source: Wikipedia contributors. The article has been reformatted by Querypedia. ");
-    const historyLink = textNode(footer, "a", "Contributors and revision history ↗");
-    historyLink.href = "https://en.wikipedia.org/w/index.php?title=" + encodeURIComponent(data.key) + "&action=history";
-    historyLink.target = "_blank"; historyLink.rel = "noopener noreferrer";
-    const license = data.license || {};
-    if (license.url) {
-      textNode(footer, "span", " · Text licence: ");
-      const licenceUrl = license.url.startsWith("//") ? "https:" + license.url : license.url;
-      if (licenceUrl.startsWith("https://creativecommons.org/")) {
-        const a = textNode(footer, "a", license.title || "Creative Commons");
-        a.href = licenceUrl; a.target = "_blank"; a.rel = "noopener noreferrer";
-      }
-    }
-    textNode(footer, "p", "Media may have separate licences. Querypedia is independent of Wikimedia.");
-    byId("page-state").classList.add("hidden");
-    byId("page-ready").classList.remove("hidden");
-  } catch (error) { byId("page-state").textContent = error.message; }
-}
-async function lookup(text) {
-  const list = byId("lookup-results");
-  list.replaceChildren();
-  textNode(list, "p", "Searching…");
-  try {
-    const data = await jsonResponse(await fetch("/api/search?q=" + encodeURIComponent(text)));
-    list.replaceChildren();
-    if (!data.pages.length) textNode(list, "p", "No matching articles.");
-    for (const item of data.pages) {
-      const link = document.createElement("a");
-      link.className = "lookup-result"; link.href = wikiLink(item.key);
-      textNode(link, "strong", item.title);
-      textNode(link, "small", item.description || "Wikipedia article");
-      list.append(link);
-    }
-  } catch (e) { list.replaceChildren(); textNode(list, "p", e.message); }
-}
-byId("home-form").addEventListener("submit", (event) => {
+$("article-form").addEventListener("submit",event => {
   event.preventDefault();
-  const question = byId("home-question").value.trim();
-  if (question.length >= 3) ask(question, "global");
+  const field = $("article-question"), q = field.value.trim();
+  if (q.length >= 3 && currentArticle) { field.value = ""; ask(q,"article"); }
 });
-for (const sample of document.querySelectorAll(".suggestions button")) {
-  sample.addEventListener("click", () => ask(sample.dataset.question, "global"));
-}
-byId("followup-form").addEventListener("submit", (event) => {
+$("ask-form").addEventListener("submit",event => {
   event.preventDefault();
-  const input = byId("followup-question"), question = input.value.trim();
-  if (question.length >= 3) { input.value = ""; ask(question, "global"); }
+  const field = $("ask-question"), q = field.value.trim();
+  if (q.length >= 3) { field.value = ""; ask(q,"global"); }
 });
-byId("article-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const input = byId("article-question"), question = input.value.trim();
-  if (question.length >= 3) { input.value = ""; ask(question, "article"); }
-});
-byId("lookup-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const value = byId("lookup").value.trim();
-  if (value.length >= 2) lookup(value);
-});
-byId("reset-chat").addEventListener("click", () => {
-  history = [];
-  byId("chat").replaceChildren();
-  byId("workspace").classList.add("hidden");
-  byId("home").classList.remove("hidden");
-  byId("home-question").focus();
-});
-for (const entry of document.querySelectorAll("textarea")) {
-  entry.addEventListener("keydown", (event) => {
+for (const field of document.querySelectorAll("textarea")) {
+  field.addEventListener("keydown",event => {
     if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      entry.closest("form").requestSubmit();
+      event.preventDefault(); field.form.requestSubmit();
     }
   });
 }
-if (articleSlug) loadArticle();
+if (articleSlug) {
+  $("article-view").classList.remove("hidden");
+  showArticle(articleSlug);
+} else if (location.pathname === "/search") {
+  $("search-view").classList.remove("hidden");
+  const q = (params.get("q") || "").trim();
+  const offset = Math.max(0,Math.min(5000,Number(params.get("offset")) || 0));
+  if (q) showSearch(q,offset,params.get("go") === "1");
+  else $("search-summary").textContent = "Use the search box above to find an article.";
+} else if (location.pathname === "/ask") {
+  $("ask-view").classList.remove("hidden");
+  const q = params.get("question");
+  if (q && q.length >= 3 && q.length <= 500) ask(q,"global");
+} else $("home-view").classList.remove("hidden");
